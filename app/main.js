@@ -46,8 +46,17 @@ const server = net.createServer((socket) => {
       const echoValue = pathName.slice("/echo/".length);
       const body = echoValue;
       const contentLength = Buffer.byteLength(body, "utf8");
+      const acceptEncoding = headers["accept-encoding"] || "";
+      const isGzipAccepted = acceptEncoding.split(",").map((value) => value.trim().toLowerCase()).includes("gzip");
 
-      response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${contentLength}\r\n\r\n${body}`;
+      let headersResponse = `HTTP/1.1 200 OK\r\nContent-Type: text/plain`;
+
+      if (isGzipAccepted) {
+        headersResponse += `\r\nContent-Encoding: gzip`;
+      }
+
+      headersResponse += `\r\nContent-Length: ${contentLength}\r\n\r\n${body}`;
+      response = headersResponse;
     } else if (pathName.startsWith("/files/")) {
       const fileName = pathName.slice("/files/".length);
       const filePath = path.join(rootDirectory, fileName);
