@@ -20,7 +20,7 @@ const server = net.createServer((socket) => {
   socket.on("data", (data) => {
     const requestText = data.toString();
     const [requestLine, ...headerLines] = requestText.split("\r\n");
-    const [, pathName] = requestLine.split(" ");
+    const [method, pathName] = requestLine.split(" ");
 
     const headers = headerLines
       .slice(0, -1)
@@ -34,6 +34,7 @@ const server = net.createServer((socket) => {
         return acc;
       }, {});
 
+    const requestBody = requestText.split("\r\n\r\n")[1] || "";
     let response;
 
     if (pathName === "/user-agent") {
@@ -51,7 +52,10 @@ const server = net.createServer((socket) => {
       const fileName = pathName.slice("/files/".length);
       const filePath = path.join(rootDirectory, fileName);
 
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      if (method === "POST") {
+        fs.writeFileSync(filePath, requestBody);
+        response = "HTTP/1.1 201 Created\r\n\r\n";
+      } else if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         const fileContents = fs.readFileSync(filePath);
         const responseHeaders = `HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ${fileContents.length}\r\n\r\n`;
 
@@ -59,9 +63,9 @@ const server = net.createServer((socket) => {
         socket.write(fileContents);
         socket.end();
         return;
+      } else {
+        response = "HTTP/1.1 404 Not Found\r\n\r\n";
       }
-
-      response = "HTTP/1.1 404 Not Found\r\n\r\n";
     } else if (pathName === "/") {
       response = "HTTP/1.1 200 OK\r\n\r\n";
     } else {
