@@ -1,13 +1,26 @@
+const fs = require("fs");
 const net = require("net");
+const path = require("path");
 
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
+
+const args = process.argv.slice(2);
+let directory = ".";
+
+for (let i = 0; i < args.length; i += 1) {
+  if (args[i] === "--directory") {
+    directory = args[i + 1] || ".";
+  }
+}
+
+const rootDirectory = path.resolve(directory);
 
 const server = net.createServer((socket) => {
   socket.on("data", (data) => {
     const requestText = data.toString();
     const [requestLine, ...headerLines] = requestText.split("\r\n");
-    const [, path] = requestLine.split(" ");
+    const [, pathName] = requestLine.split(" ");
 
     const headers = headerLines
       .slice(0, -1)
@@ -23,18 +36,33 @@ const server = net.createServer((socket) => {
 
     let response;
 
-    if (path === "/user-agent") {
+    if (pathName === "/user-agent") {
       const body = headers["user-agent"] || "";
       const contentLength = Buffer.byteLength(body, "utf8");
 
       response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${contentLength}\r\n\r\n${body}`;
-    } else if (path.startsWith("/echo/")) {
-      const echoValue = path.slice("/echo/".length);
+    } else if (pathName.startsWith("/echo/")) {
+      const echoValue = pathName.slice("/echo/".length);
       const body = echoValue;
       const contentLength = Buffer.byteLength(body, "utf8");
 
       response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${contentLength}\r\n\r\n${body}`;
-    } else if (path === "/") {
+    } else if (pathName.startsWith("/files/")) {
+      const fileName = pathName.slice("/files/".length);
+      const filePath = path.join(rootDirectory, fileName);
+
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const fileContents = fs.readFileSync(filePath);
+        const responseHeaders = `HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ${fileContents.length}\r\n\r\n`;
+
+        socket.write(responseHeaders);
+        socket.write(fileContents);
+        socket.end();
+        return;
+      }
+
+      response = "HTTP/1.1 404 Not Found\r\n\r\n";
+    } else if (pathName === "/") {
       response = "HTTP/1.1 200 OK\r\n\r\n";
     } else {
       response = "HTTP/1.1 404 Not Found\r\n\r\n";
