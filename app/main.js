@@ -1,6 +1,7 @@
 const fs = require("fs");
 const net = require("net");
 const path = require("path");
+const zlib = require("zlib");
 
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
@@ -45,18 +46,28 @@ const server = net.createServer((socket) => {
     } else if (pathName.startsWith("/echo/")) {
       const echoValue = pathName.slice("/echo/".length);
       const body = echoValue;
-      const contentLength = Buffer.byteLength(body, "utf8");
       const acceptEncoding = headers["accept-encoding"] || "";
       const isGzipAccepted = acceptEncoding.split(",").map((value) => value.trim().toLowerCase()).includes("gzip");
 
-      let headersResponse = `HTTP/1.1 200 OK\r\nContent-Type: text/plain`;
+      let headersResponse = "HTTP/1.1 200 OK\r\nContent-Type: text/plain";
+      let responseBody = body;
+      let contentLength;
 
       if (isGzipAccepted) {
-        headersResponse += `\r\nContent-Encoding: gzip`;
+        const compressedBody = zlib.gzipSync(body);
+        responseBody = compressedBody;
+        contentLength = compressedBody.length;
+        headersResponse += "\r\nContent-Encoding: gzip";
+      } else {
+        contentLength = Buffer.byteLength(body, "utf8");
       }
 
-      headersResponse += `\r\nContent-Length: ${contentLength}\r\n\r\n${body}`;
-      response = headersResponse;
+      headersResponse += `\r\nContent-Length: ${contentLength}\r\n\r\n`;
+
+      socket.write(headersResponse);
+      socket.write(responseBody);
+      socket.end();
+      return;
     } else if (pathName.startsWith("/files/")) {
       const fileName = pathName.slice("/files/".length);
       const filePath = path.join(rootDirectory, fileName);
