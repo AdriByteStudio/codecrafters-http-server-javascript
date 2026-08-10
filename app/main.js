@@ -77,13 +77,18 @@ const server = net.createServer((socket) => {
       buffer = buffer.subarray(parsed.bytesConsumed);
 
       const { method, pathName, headers, body } = parsed;
+      const shouldClose = (headers.connection || "").toLowerCase() === "close";
       let response;
 
       if (pathName === "/user-agent") {
         const userAgentBody = headers["user-agent"] || "";
         const contentLength = Buffer.byteLength(userAgentBody, "utf8");
 
-        response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${contentLength}\r\n\r\n${userAgentBody}`;
+        response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${contentLength}`;
+        if (shouldClose) {
+          response += "\r\nConnection: close";
+        }
+        response += `\r\n\r\n${userAgentBody}`;
       } else if (pathName.startsWith("/echo/")) {
         const echoValue = pathName.slice("/echo/".length);
         const bodyText = echoValue;
@@ -103,10 +108,18 @@ const server = net.createServer((socket) => {
           contentLength = Buffer.byteLength(bodyText, "utf8");
         }
 
-        headersResponse += `\r\nContent-Length: ${contentLength}\r\n\r\n`;
+        headersResponse += `\r\nContent-Length: ${contentLength}`;
+        if (shouldClose) {
+          headersResponse += "\r\nConnection: close";
+        }
+        headersResponse += "\r\n\r\n";
 
         socket.write(headersResponse);
         socket.write(responseBody);
+        if (shouldClose) {
+          socket.end();
+          return;
+        }
         continue;
       } else if (pathName.startsWith("/files/")) {
         const fileName = pathName.slice("/files/".length);
@@ -114,24 +127,52 @@ const server = net.createServer((socket) => {
 
         if (method === "POST") {
           fs.writeFileSync(filePath, body);
-          response = "HTTP/1.1 201 Created\r\n\r\n";
+          response = "HTTP/1.1 201 Created";
+          if (shouldClose) {
+            response += "\r\nConnection: close";
+          }
+          response += "\r\n\r\n";
         } else if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
           const fileContents = fs.readFileSync(filePath);
-          const responseHeaders = `HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ${fileContents.length}\r\n\r\n`;
+          let responseHeaders = `HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ${fileContents.length}`;
+          if (shouldClose) {
+            responseHeaders += "\r\nConnection: close";
+          }
+          responseHeaders += "\r\n\r\n";
 
           socket.write(responseHeaders);
           socket.write(fileContents);
+          if (shouldClose) {
+            socket.end();
+            return;
+          }
           continue;
         } else {
-          response = "HTTP/1.1 404 Not Found\r\n\r\n";
+          response = "HTTP/1.1 404 Not Found";
+          if (shouldClose) {
+            response += "\r\nConnection: close";
+          }
+          response += "\r\n\r\n";
         }
       } else if (pathName === "/") {
-        response = "HTTP/1.1 200 OK\r\n\r\n";
+        response = "HTTP/1.1 200 OK";
+        if (shouldClose) {
+          response += "\r\nConnection: close";
+        }
+        response += "\r\n\r\n";
       } else {
-        response = "HTTP/1.1 404 Not Found\r\n\r\n";
+        response = "HTTP/1.1 404 Not Found";
+        if (shouldClose) {
+          response += "\r\nConnection: close";
+        }
+        response += "\r\n\r\n";
       }
 
       socket.write(response);
+      if (shouldClose) {
+        socket.end();
+        return;
+      }
     }
   });
 });
