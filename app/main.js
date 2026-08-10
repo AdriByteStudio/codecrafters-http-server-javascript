@@ -5,12 +5,30 @@ console.log("Logs from your program will appear here!");
 
 const server = net.createServer((socket) => {
   socket.on("data", (data) => {
-    const requestLine = data.toString().split("\r\n")[0];
+    const requestText = data.toString();
+    const [requestLine, ...headerLines] = requestText.split("\r\n");
     const [, path] = requestLine.split(" ");
+
+    const headers = headerLines
+      .slice(0, -1)
+      .reduce((acc, line) => {
+        const separatorIndex = line.indexOf(":");
+        if (separatorIndex !== -1) {
+          const name = line.slice(0, separatorIndex).trim().toLowerCase();
+          const value = line.slice(separatorIndex + 1).trim();
+          acc[name] = value;
+        }
+        return acc;
+      }, {});
 
     let response;
 
-    if (path.startsWith("/echo/")) {
+    if (path === "/user-agent") {
+      const body = headers["user-agent"] || "";
+      const contentLength = Buffer.byteLength(body, "utf8");
+
+      response = `HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${contentLength}\r\n\r\n${body}`;
+    } else if (path.startsWith("/echo/")) {
       const echoValue = path.slice("/echo/".length);
       const body = echoValue;
       const contentLength = Buffer.byteLength(body, "utf8");
